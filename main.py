@@ -14,7 +14,7 @@ from PIL import Image
 
 ### Constants ###
 testSetLocation = './TestSet/ILSVRC/Data/DET/test'
-amntOfImages = 3
+amntOfImages = 10
 
 #if not torch.cuda.is_available():
 #    print("This will be slow")
@@ -46,7 +46,29 @@ for subdir, dirs, files in os.walk(testSetLocation):
         if imgsLoaded >= amntOfImages:
             break
 
-inputBatch = images[0].unsqueeze(0)
+def extractVOG(net,testSet,device):
+    # Lets do the VOG thing here
+    print("Evaluating VOG")
+    counter = 0
+    net.eval()  # Turn training
+    grads = []
+    input = testSet
+    input.requires_grad=True
+    #logits = net(images)
+    preds = net(input)
+    #layer_softMax = torch.nn.Softmax(dim=1)(logits)
+    score, indices = torch.max(preds,1)
+    # the tensor.type below casts the tensor into a LongTensor type(rather than float i think)
+    #sel_nodes = layer_softMax[torch,torch.arange(len(labels),labels.type(torch.LongTensor))]# I dont understand much why this is happening
+    #        layer_softMax.backward(ones)
+    score.backward()
+    grads.append(input.grad.cpu().data.numpy())
+    counter += 1
+
+    print("Finished VOG Evaluation")
+    return grads
+
+inputBatch = images[4].unsqueeze(0)
 if torch.cuda.is_available():
     inputBatch = inputBatch.to('cuda')
     resnet18.to('cuda')
@@ -56,6 +78,15 @@ with torch.no_grad():
 score,indices = torch.max(output,1)
 #result = resnet18(imgbatch)
 print('Result : '+str(indices.cpu().data))
-plt.imshow(np.moveaxis(np.asarray(images[0].cpu()),0,-1))
-plt.show()
+
+plt.subplot(121,title="Original Image")
+plt.imshow(np.moveaxis(np.asarray(images[4].cpu()),0,-1))
 print('Score of index : '+str(score))
+vog = extractVOG(resnet18,inputBatch,'cuda')
+plt.subplot(122,title="Salient Map of Image")
+vogImage = np.moveaxis(vog[0].squeeze(),0,-1)
+#vogLogTransformed =1*np.log(1 + ((vogImage+1)/2))
+vogGammaTransformed = np.power(((vogImage+1)/2),2.8)
+plt.imshow(vogGammaTransformed)
+plt.show()
+
